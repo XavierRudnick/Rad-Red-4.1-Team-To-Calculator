@@ -1,7 +1,17 @@
 import struct
 import pandas as pd
-import streamlit as st
-abilities = pd.read_csv("species_abilities.csv")
+
+import time
+import os
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+abilities = pd.read_csv(r"C:\Users\Xav\Desktop\PokeRadicalRedCode\Rad-Red-4.1-Team-To-Calculator\species_abilities.csv")
+driver_path = r"C:\Users\Xav\Downloads\chromedriver-win64\chromedriver-win64\chromedriver.exe"
 # Function to get the ability of a given species and ability type
 
 def get_ability(species, ability_type):
@@ -23,22 +33,22 @@ def get_ability(species, ability_type):
         return "Invalid ability type"
 def get_name_by_species(species_id):
 
-    with open('Species.txt', 'r') as file:
+    with open(r"C:\Users\Xav\Desktop\PokeRadicalRedCode\Rad-Red-4.1-Team-To-Calculator\Species.txt", 'r') as file:
     # Read lines from the file and store them in an array
         names_array = file.readlines()
     # Optional: Remove newline characters from each name
     names_array = [name.strip() for name in names_array]
     return names_array[species_id-1]
 def get_Moves_by_Id(move_id):
-    with open('Moves.txt', 'r') as file:
+    with open(r"C:\Users\Xav\Desktop\PokeRadicalRedCode\Rad-Red-4.1-Team-To-Calculator\Moves.txt", 'r') as file:
     # Read lines from the file and store them in an array
         move_array = file.readlines()
     # Optional: Remove newline characters from each name
-    move_array = [move.strip() for move in move_array]
-    return move_array[move_id-1]
+    move_array = [move.strip() for move in move_array]    
+    if move_id == 0: return "(No Move)"   
 
 def get_Item_by_id(item_id):
-        with open('Items.txt', 'r') as file:
+        with open(r"C:\Users\Xav\Desktop\PokeRadicalRedCode\Rad-Red-4.1-Team-To-Calculator\Items.txt", 'r') as file:
     # Read lines from the file and store them in an array
             item_array = file.readlines()
     # Optional: Remove newline characters from each name
@@ -238,18 +248,125 @@ def Print_Pokemon_Party(sav_file_path):
         st.toast("Bad File", icon="❌")
     return pokemon_text
 
-def process_file_streamlit(file):
-    file_content = file.read()
-    hex_content = file_content.hex()
-    formatted_hex_content = ' '.join(hex_content[i:i+2] for i in range(0, len(hex_content), 2))
-    return formatted_hex_content
-st.set_page_config(page_title="Radical Red Team Exporter",page_icon="radredicon.ico")
-st.title("Radical Red Team Exporter")
+def import_to_damage_calc(team_text, set_name="XD"):
+    # Set up Chrome to attach to user's browser
+    chrome_options = Options()
+    chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    
+    try:
+        service = Service(driver_path)
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
+        # Check if on the damage calculator page
+        current_url = driver.current_url
+        target_url = "http://127.0.0.1:5500/damage-calc/dist/normal.html?mode=normal"
+        if current_url != target_url:
+            driver.get(target_url)
+        
+        # Wait for the page to load
+        wait = WebDriverWait(driver, 10)
+        
+        # Find and fill the import textarea
+        import_textarea = wait.until(EC.presence_of_element_located((By.CLASS_NAME, "import-team-text")))
+        import_textarea.clear()
+        import_textarea.send_keys(team_text)
+        print(team_text)    
+        # Find and fill the name input
+        name_input = driver.find_element(By.CLASS_NAME, "import-name-text")
+        name_input.clear()
+        name_input.send_keys(set_name)
+        
+        # Click the import button
+        import_button = driver.find_element(By.ID, "import")
+        import_button.click()
+        
+        # Wait for import
+        time.sleep(2)
+        
+        print("Team imported successfully into your browser!")
+        
+    except Exception as e:
+        print(f"Import failed: {e}")
+        print("Make sure Chrome is running with --remote-debugging-port=9222 and the damage calculator page is open.")
+    finally:
+        driver.quit()
 
-# File upload
-uploaded_file = st.file_uploader("Choose a radical red 4.1  .sav file", type="sav")
-if uploaded_file:
-    result = Print_Pokemon_Party(uploaded_file)
-    text_file = st.code(result)
-    if result:
-        st.toast("file uploaded", icon="✅")
+def process_team():
+    print("Processing team...")
+    with open(r"C:\Users\Xav\Desktop\PokeRadicalRedCode\Rad-Red-4.1-Team-To-Calculator\party_raw.txt", "r") as f:
+        lines = f.readlines()
+
+    showdown_export = ""
+    for line in lines:
+        s_id, lvl, item_id, pid, evs_packed, ivs_packed, move1, move2, move3, move4, current_hp, max_hp, status = map(int, line.strip().split(','))
+        # Use your existing Python functions here
+        name = get_name_by_species(s_id)
+        item = get_Item_by_id(item_id)
+        nature = NATURES[pid % 25]
+        ability_bit = (ivs_packed >> 31) & 0x01
+        if ability_bit == 1:
+            ability_type = "h"
+        else:
+            if pid % 2 == 0:
+                ability_type = "1"
+            else:
+                ability_type = "2"
+        ability = get_ability(name, ability_type)
+
+        move1_name = get_Moves_by_Id(move1) 
+        move2_name = get_Moves_by_Id(move2)
+        move3_name = get_Moves_by_Id(move3)
+        move4_name = get_Moves_by_Id(move4)
+
+        # Unpack IVs (5 bits each)
+        iv_hp = (ivs_packed >> 0) & 0x1F
+        iv_attack = (ivs_packed >> 5) & 0x1F
+        iv_defense = (ivs_packed >> 10) & 0x1F
+        iv_speed = (ivs_packed >> 15) & 0x1F
+        iv_special_attack = (ivs_packed >> 20) & 0x1F
+        iv_special_defense = (ivs_packed >> 25) & 0x1F
+
+        # Unpack EVs (8 bits each for 4 stats, SpA/SpD = 0)
+        ev_hp = 0
+        ev_attack = 0
+        ev_defense = 0
+        ev_speed = 0
+        ev_special_attack = 0
+        ev_special_defense = 0
+
+        # Format for Showdown
+        showdown_export += f"{name}"
+        if item != "None":
+            showdown_export += f" @ {item}"
+        showdown_export += "\n"
+        showdown_export += f"Ability: {ability}\n"
+        showdown_export += f"Level: {lvl}\n"
+        showdown_export += f"{nature} Nature\n"
+        showdown_export += f"EVs: {ev_hp} HP / {ev_attack} Atk / {ev_defense} Def / {ev_speed} Spe / {ev_special_attack} SpA / {ev_special_defense} SpD\n"
+        showdown_export += f"IVs: {iv_hp} HP / {iv_attack} Atk / {iv_defense} Def / {iv_speed} Spe / {iv_special_attack} SpA / {iv_special_defense} SpD\n"
+        showdown_export += f"- {move1_name}\n"
+        showdown_export += f"- {move2_name}\n"
+        showdown_export += f"- {move3_name}\n"
+        showdown_export += f"- {move4_name}\n"
+        showdown_export += "\n"
+    print(showdown_export )
+    with open(r"C:\Users\Xav\Desktop\PokeRadicalRedCode\Rad-Red-4.1-Team-To-Calculator\import_me.txt", "w") as f:
+        f.write(showdown_export)
+    print("New Showdown export ready in import_me.txt")
+    
+    # Call import damage after showdown export str is created
+    import_to_damage_calc(showdown_export)
+
+
+# Loop to watch for file updates
+last_mtime = 0
+while True:
+    try:
+        current_mtime = os.path.getmtime(r"C:\Users\Xav\Desktop\PokeRadicalRedCode\Rad-Red-4.1-Team-To-Calculator\party_raw.txt")
+        if current_mtime != last_mtime:
+            process_team()
+            last_mtime = current_mtime
+    except: pass
+    time.sleep(3)
